@@ -5,7 +5,7 @@ import { cookies } from 'next/headers';
 // Get all users (admin only)
 export async function GET() {
     try {
-        const cookieStore = cookies();
+        const cookieStore = await cookies();
         const token = cookieStore.get('token')?.value;
 
         if (!token) {
@@ -33,7 +33,7 @@ export async function GET() {
 // Create new user (admin only)
 export async function POST(request) {
     try {
-        const cookieStore = cookies();
+        const cookieStore = await cookies();
         const token = cookieStore.get('token')?.value;
 
         if (!token) {
