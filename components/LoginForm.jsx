@@ -1,8 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { signIn } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 import { Eye, EyeOff, LogIn, ChartBar as BarChart3 } from 'lucide-react';
 
 export default function LoginForm() {
@@ -11,27 +10,20 @@ export default function LoginForm() {
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-    const router = useRouter();
+    const { login } = useAuth();
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
         setError('');
 
-        try {
-            const { data, error } = await signIn(email, password);
+        const result = await login(email, password);
 
-            if (error) {
-                setError(error.message);
-            } else {
-                router.push('/');
-                router.refresh();
-            }
-        } catch (err) {
-            setError('An unexpected error occurred');
-        } finally {
-            setLoading(false);
+        if (!result.success) {
+            setError(result.error);
         }
+
+        setLoading(false);
     };
 
     return (
@@ -138,20 +130,21 @@ export default function LoginForm() {
                                 <div className="w-full border-t border-gray-300" />
                             </div>
                             <div className="relative flex justify-center text-sm">
-                                <span className="px-2 bg-white text-gray-500">Demo Credentials</span>
+                                <span className="px-2 bg-white text-gray-500">Access Information</span>
                             </div>
                         </div>
 
                         <div className="mt-4 space-y-2 text-xs text-gray-600">
                             <div className="bg-gray-50 p-3 rounded-md">
-                                <p className="font-medium">Getting Started:</p>
-                                <p>1. Sign up with any email to create your account</p>
-                                <p>2. First user will automatically become admin</p>
-                                <p>3. Admins can then create additional users</p>
+                                <p className="font-medium">User Access:</p>
+                                <p>• Only admin can create new users</p>
+                                <p>• No public registration available</p>
+                                <p>• Contact your administrator for credentials</p>
                             </div>
                             <div className="bg-blue-50 p-3 rounded-md">
-                                <p className="font-medium">Need Help?</p>
-                                <p>Contact your administrator for login credentials</p>
+                                <p className="font-medium">Roles:</p>
+                                <p>• <strong>Admin:</strong> Full access + user management</p>
+                                <p>• <strong>Viewer:</strong> Read-only access + CSV export</p>
                             </div>
                         </div>
                     </div>

@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase, signUp } from '@/lib/supabase';
 import { Users, Plus, CreditCard as Edit2, Trash2, Shield, Eye } from 'lucide-react';
 
 export default function UserManagement() {
@@ -13,6 +12,7 @@ export default function UserManagement() {
     const [newUser, setNewUser] = useState({ email: '', password: '', role: 'viewer' });
     const [submitting, setSubmitting] = useState(false);
     const [message, setMessage] = useState('');
+    const [editingUser, setEditingUser] = useState(null);
 
     useEffect(() => {
         if (isAdmin) {
@@ -22,13 +22,13 @@ export default function UserManagement() {
 
     const fetchUsers = async () => {
         try {
-            const { data, error } = await supabase
-                .from('user_profiles')
-                .select('*')
-                .order('created_at', { ascending: false });
-
-            if (error) throw error;
-            setUsers(data || []);
+            const response = await fetch('/api/users');
+            if (response.ok) {
+                const data = await response.json();
+                setUsers(data);
+            } else {
+                setMessage('Error fetching users');
+            }
         } catch (error) {
             console.error('Error fetching users:', error);
             setMessage('Error fetching users');
@@ -43,20 +43,73 @@ export default function UserManagement() {
         setMessage('');
 
         try {
-            const { data, error } = await signUp(newUser.email, newUser.password, newUser.role);
+            const response = await fetch('/api/users', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(newUser),
+            });
 
-            if (error) {
-                setMessage(`Error: ${error.message}`);
-            } else {
+            const data = await response.json();
+
+            if (response.ok) {
                 setMessage('User created successfully!');
                 setNewUser({ email: '', password: '', role: 'viewer' });
                 setShowAddUser(false);
                 fetchUsers();
+            } else {
+                setMessage(`Error: ${data.error}`);
             }
-        } catch (err) {
+        } catch (error) {
             setMessage('An unexpected error occurred');
         } finally {
             setSubmitting(false);
+        }
+    };
+
+    const handleUpdateRole = async (userId, newRole) => {
+        try {
+            const response = await fetch(`/api/users/${userId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ role: newRole }),
+            });
+
+            if (response.ok) {
+                setMessage('User role updated successfully!');
+                fetchUsers();
+                setEditingUser(null);
+            } else {
+                const data = await response.json();
+                setMessage(`Error: ${data.error}`);
+            }
+        } catch (error) {
+            setMessage('Error updating user role');
+        }
+    };
+
+    const handleDeleteUser = async (userId) => {
+        if (!confirm('Are you sure you want to delete this user?')) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/users/${userId}`, {
+                method: 'DELETE',
+            });
+
+            if (response.ok) {
+                setMessage('User deleted successfully!');
+                fetchUsers();
+            } else {
+                const data = await response.json();
+                setMessage(`Error: ${data.error}`);
+            }
+        } catch (error) {
+            setMessage('Error deleting user');
         }
     };
 
@@ -197,27 +250,44 @@ export default function UserManagement() {
                                         <div className="text-sm font-medium text-gray-900">{user.email}</div>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap">
-                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${user.role === 'admin'
-                                                ? 'bg-purple-100 text-purple-800'
-                                                : 'bg-blue-100 text-blue-800'
-                                            }`}>
-                                            {user.role === 'admin' ? (
-                                                <Shield className="h-3 w-3 mr-1" />
-                                            ) : (
-                                                <Eye className="h-3 w-3 mr-1" />
-                                            )}
-                                            {user.role}
-                                        </span>
+                                        {editingUser === user.id ? (
+                                            <select
+                                                value={user.role}
+                                                onChange={(e) => handleUpdateRole(user.id, e.target.value)}
+                                                className="text-xs px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                                            >
+                                                <option value="viewer">Viewer</option>
+                                                <option value="admin">Admin</option>
+                                            </select>
+                                        ) : (
+                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${user.role === 'admin'
+                                                    ? 'bg-purple-100 text-purple-800'
+                                                    : 'bg-blue-100 text-blue-800'
+                                                }`}>
+                                                {user.role === 'admin' ? (
+                                                    <Shield className="h-3 w-3 mr-1" />
+                                                ) : (
+                                                    <Eye className="h-3 w-3 mr-1" />
+                                                )}
+                                                {user.role}
+                                            </span>
+                                        )}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                         {new Date(user.created_at).toLocaleDateString()}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-center">
                                         <div className="flex items-center justify-center space-x-2">
-                                            <button className="text-blue-600 hover:text-blue-900">
+                                            <button
+                                                onClick={() => setEditingUser(editingUser === user.id ? null : user.id)}
+                                                className="text-blue-600 hover:text-blue-900"
+                                            >
                                                 <Edit2 className="h-4 w-4" />
                                             </button>
-                                            <button className="text-red-600 hover:text-red-900">
+                                            <button
+                                                onClick={() => handleDeleteUser(user.id)}
+                                                className="text-red-600 hover:text-red-900"
+                                            >
                                                 <Trash2 className="h-4 w-4" />
                                             </button>
                                         </div>
