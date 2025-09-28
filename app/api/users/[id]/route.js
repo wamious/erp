@@ -5,7 +5,7 @@ import { cookies } from 'next/headers';
 // Update user role (admin only)
 export async function PUT(request, { params }) {
     try {
-        const cookieStore = cookies();
+        const cookieStore = await cookies();
         const token = cookieStore.get('token')?.value;
 
         if (!token) {
@@ -23,7 +23,7 @@ export async function PUT(request, { params }) {
         }
 
         const { role } = await request.json();
-        const userId = params.id;
+        const { id: userId } = await params;
 
         if (!role || !['admin', 'viewer'].includes(role)) {
             return NextResponse.json(
@@ -47,7 +47,7 @@ export async function PUT(request, { params }) {
 // Delete user (admin only)
 export async function DELETE(request, { params }) {
     try {
-        const cookieStore = cookies();
+        const cookieStore = await cookies();
         const token = cookieStore.get('token')?.value;
 
         if (!token) {
@@ -64,7 +64,7 @@ export async function DELETE(request, { params }) {
             return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
         }
 
-        const userId = params.id;
+        const { id: userId } = await params;
 
         // Prevent admin from deleting themselves
         if (userId === user.id) {
