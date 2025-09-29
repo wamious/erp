@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { Users, Plus, CreditCard as Edit2, Trash2, Shield, Eye } from 'lucide-react';
+import { Users, Plus, CreditCard as Edit2, Trash2, Shield, Eye, EyeOff, Loader as Loader2 } from 'lucide-react';
+import toast, { Toaster } from 'react-hot-toast';
 
 export default function UserManagement() {
     const { isAdmin } = useAuth();
@@ -11,8 +12,10 @@ export default function UserManagement() {
     const [showAddUser, setShowAddUser] = useState(false);
     const [newUser, setNewUser] = useState({ email: '', password: '', role: 'viewer' });
     const [submitting, setSubmitting] = useState(false);
-    const [message, setMessage] = useState('');
     const [editingUser, setEditingUser] = useState(null);
+    const [showPassword, setShowPassword] = useState(false);
+    const [updatingRole, setUpdatingRole] = useState(null);
+    const [deletingUser, setDeletingUser] = useState(null);
 
     useEffect(() => {
         if (isAdmin) {
@@ -27,11 +30,11 @@ export default function UserManagement() {
                 const data = await response.json();
                 setUsers(data);
             } else {
-                setMessage('Error fetching users');
+                toast.error('Error fetching users');
             }
         } catch (error) {
             console.error('Error fetching users:', error);
-            setMessage('Error fetching users');
+            toast.error('Error fetching users');
         } finally {
             setLoading(false);
         }
@@ -40,7 +43,6 @@ export default function UserManagement() {
     const handleAddUser = async (e) => {
         e.preventDefault();
         setSubmitting(true);
-        setMessage('');
 
         try {
             const response = await fetch('/api/users', {
@@ -54,21 +56,24 @@ export default function UserManagement() {
             const data = await response.json();
 
             if (response.ok) {
-                setMessage('User created successfully!');
+                toast.success('User created successfully!');
                 setNewUser({ email: '', password: '', role: 'viewer' });
                 setShowAddUser(false);
+                setShowPassword(false);
                 fetchUsers();
             } else {
-                setMessage(`Error: ${data.error}`);
+                toast.error(data.error || 'Error creating user');
             }
         } catch (error) {
-            setMessage('An unexpected error occurred');
+            toast.error('An unexpected error occurred');
         } finally {
             setSubmitting(false);
         }
     };
 
     const handleUpdateRole = async (userId, newRole) => {
+        setUpdatingRole(userId);
+
         try {
             const response = await fetch(`/api/users/${userId}`, {
                 method: 'PUT',
@@ -79,15 +84,17 @@ export default function UserManagement() {
             });
 
             if (response.ok) {
-                setMessage('User role updated successfully!');
+                toast.success('User role updated successfully!');
                 fetchUsers();
                 setEditingUser(null);
             } else {
                 const data = await response.json();
-                setMessage(`Error: ${data.error}`);
+                toast.error(data.error || 'Error updating user role');
             }
         } catch (error) {
-            setMessage('Error updating user role');
+            toast.error('Error updating user role');
+        } finally {
+            setUpdatingRole(null);
         }
     };
 
@@ -96,20 +103,24 @@ export default function UserManagement() {
             return;
         }
 
+        setDeletingUser(userId);
+
         try {
             const response = await fetch(`/api/users/${userId}`, {
                 method: 'DELETE',
             });
 
             if (response.ok) {
-                setMessage('User deleted successfully!');
+                toast.success('User deleted successfully!');
                 fetchUsers();
             } else {
                 const data = await response.json();
-                setMessage(`Error: ${data.error}`);
+                toast.error(data.error || 'Error deleting user');
             }
         } catch (error) {
-            setMessage('Error deleting user');
+            toast.error('Error deleting user');
+        } finally {
+            setDeletingUser(null);
         }
     };
 
@@ -133,6 +144,31 @@ export default function UserManagement() {
 
     return (
         <div className="max-w-7xl mx-auto p-6">
+            <Toaster
+                position="top-right"
+                toastOptions={{
+                    duration: 4000,
+                    style: {
+                        background: '#363636',
+                        color: '#fff',
+                    },
+                    success: {
+                        duration: 3000,
+                        iconTheme: {
+                            primary: '#10B981',
+                            secondary: '#fff',
+                        },
+                    },
+                    error: {
+                        duration: 4000,
+                        iconTheme: {
+                            primary: '#EF4444',
+                            secondary: '#fff',
+                        },
+                    },
+                }}
+            />
+
             <div className="bg-white rounded-lg shadow-sm border border-gray-200">
                 <div className="px-6 py-4 border-b border-gray-200">
                     <div className="flex items-center justify-between">
@@ -172,14 +208,27 @@ export default function UserManagement() {
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
                                         Password
                                     </label>
-                                    <input
-                                        type="password"
-                                        required
-                                        value={newUser.password}
-                                        onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                        placeholder="Password"
-                                    />
+                                    <div className="relative">
+                                        <input
+                                            type={showPassword ? 'text' : 'password'}
+                                            required
+                                            value={newUser.password}
+                                            onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                                            className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                            placeholder="Password"
+                                        />
+                                        <button
+                                            type="button"
+                                            className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                                            onClick={() => setShowPassword(!showPassword)}
+                                        >
+                                            {showPassword ? (
+                                                <EyeOff className="h-4 w-4 text-gray-400 hover:text-gray-600" />
+                                            ) : (
+                                                <Eye className="h-4 w-4 text-gray-400 hover:text-gray-600" />
+                                            )}
+                                        </button>
+                                    </div>
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -195,30 +244,32 @@ export default function UserManagement() {
                                     </select>
                                 </div>
                             </div>
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    {message && (
-                                        <p className={`text-sm ${message.includes('Error') ? 'text-red-600' : 'text-green-600'}`}>
-                                            {message}
-                                        </p>
+                            <div className="flex items-center justify-end space-x-3">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowAddUser(false);
+                                        setShowPassword(false);
+                                        setNewUser({ email: '', password: '', role: 'viewer' });
+                                    }}
+                                    className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={submitting}
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center"
+                                >
+                                    {submitting ? (
+                                        <>
+                                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                            Creating...
+                                        </>
+                                    ) : (
+                                        'Create User'
                                     )}
-                                </div>
-                                <div className="flex space-x-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowAddUser(false)}
-                                        className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        disabled={submitting}
-                                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-                                    >
-                                        {submitting ? 'Creating...' : 'Create User'}
-                                    </button>
-                                </div>
+                                </button>
                             </div>
                         </form>
                     </div>
@@ -251,14 +302,20 @@ export default function UserManagement() {
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         {editingUser === user.id ? (
-                                            <select
-                                                value={user.role}
-                                                onChange={(e) => handleUpdateRole(user.id, e.target.value)}
-                                                className="text-xs px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
-                                            >
-                                                <option value="viewer">Viewer</option>
-                                                <option value="admin">Admin</option>
-                                            </select>
+                                            <div className="flex items-center space-x-2">
+                                                <select
+                                                    value={user.role}
+                                                    onChange={(e) => handleUpdateRole(user.id, e.target.value)}
+                                                    disabled={updatingRole === user.id}
+                                                    className="text-xs px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                                                >
+                                                    <option value="viewer">Viewer</option>
+                                                    <option value="admin">Admin</option>
+                                                </select>
+                                                {updatingRole === user.id && (
+                                                    <Loader2 className="h-3 w-3 animate-spin text-blue-600" />
+                                                )}
+                                            </div>
                                         ) : (
                                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${user.role === 'admin'
                                                     ? 'bg-purple-100 text-purple-800'
@@ -280,15 +337,21 @@ export default function UserManagement() {
                                         <div className="flex items-center justify-center space-x-2">
                                             <button
                                                 onClick={() => setEditingUser(editingUser === user.id ? null : user.id)}
-                                                className="text-blue-600 hover:text-blue-900"
+                                                disabled={updatingRole === user.id}
+                                                className="text-blue-600 hover:text-blue-900 disabled:opacity-50 disabled:cursor-not-allowed"
                                             >
                                                 <Edit2 className="h-4 w-4" />
                                             </button>
                                             <button
                                                 onClick={() => handleDeleteUser(user.id)}
-                                                className="text-red-600 hover:text-red-900"
+                                                disabled={deletingUser === user.id}
+                                                className="text-red-600 hover:text-red-900 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                                             >
-                                                <Trash2 className="h-4 w-4" />
+                                                {deletingUser === user.id ? (
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                ) : (
+                                                    <Trash2 className="h-4 w-4" />
+                                                )}
                                             </button>
                                         </div>
                                     </td>
