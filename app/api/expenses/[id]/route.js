@@ -6,7 +6,9 @@ import { useAuth } from '@/contexts/AuthContext';
 export async function PUT(request, { params }) {
     try {
         const expenseData = await request.json();
-        const expenseId = params.id;
+        const { id: userId } = await params;
+        const expenseId = userId;
+
 
         // Update the expense
         const { data, error } = await supabase

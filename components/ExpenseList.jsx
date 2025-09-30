@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { format } from 'date-fns';
 import { Search, Filter, Download, Eye, CreditCard as Edit2, Trash2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, X, TriangleAlert as AlertTriangle } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -318,8 +318,8 @@ export default function ExpenseList() {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {paginatedExpenses.map((expense, index) => (
-                <>
-                  <tr key={expense.id || index} className="hover:bg-gray-50">
+                <Fragment key={expense.id || index}>
+                  <tr className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {format(new Date(expense.date), 'MMM dd, yyyy')}
                     </td>
@@ -336,10 +336,10 @@ export default function ExpenseList() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${expense.payment_mode === 'UPI'
-                          ? 'bg-green-100 text-green-800'
-                          : expense.payment_mode === 'Bank Transfer'
-                            ? 'bg-blue-100 text-blue-800'
-                            : 'bg-gray-100 text-gray-800'
+                        ? 'bg-green-100 text-green-800'
+                        : expense.payment_mode === 'Bank Transfer'
+                          ? 'bg-blue-100 text-blue-800'
+                          : 'bg-gray-100 text-gray-800'
                         }`}>
                         {expense.payment_mode}
                       </span>
@@ -408,7 +408,7 @@ export default function ExpenseList() {
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -462,8 +462,8 @@ export default function ExpenseList() {
                         key={page}
                         onClick={() => setCurrentPage(page)}
                         className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${page === currentPage
-                            ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
-                            : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                          ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
+                          : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
                           }`}
                       >
                         {page}
