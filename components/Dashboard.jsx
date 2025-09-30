@@ -101,6 +101,36 @@ export default function Dashboard() {
       const response = await fetch('/api/expenses?action=monthly');
       if (!response.ok) throw new Error('Failed to fetch monthly data');
       const data = await response.json();
+
+      // Filter for current financial year (April to current month)
+      const currentDate = new Date();
+      const currentYear = currentDate.getFullYear();
+      const currentMonth = currentDate.getMonth(); // 0-based
+
+      // Financial year starts in April
+      const fyStartYear = currentMonth >= 3 ? currentYear : currentYear - 1;
+
+      const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+      const financialYearMonths = [];
+      for (let i = 0; i <= (currentMonth >= 3 ? currentMonth - 3 : currentMonth + 9); i++) {
+        const monthIndex = (3 + i) % 12; // Start from April
+        const year = monthIndex >= 3 ? fyStartYear : fyStartYear + 1;
+        const monthName = MONTHS[monthIndex];
+        financialYearMonths.push(`${monthName} ${year}`);
+      }
+
+      // Create data for financial year months
+      const fyData = financialYearMonths.map(monthYear => {
+        const found = data.find(item => item.month === monthYear);
+        return {
+          month: monthYear.split(' ')[0], // just month name
+          amount: found ? parseFloat(found.amount) : 0
+        };
+      });
+
+      setMonthlyChartData(fyData);
     } catch (error) {
       console.error('Error fetching monthly data:', error);
     }
