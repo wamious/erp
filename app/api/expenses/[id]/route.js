@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 
+const EXPENSES_TABLE = 'ERP_EXPENSES';
+
 // Update expense (admin only)
 export async function PUT(request, { params }) {
     try {
@@ -12,7 +14,7 @@ export async function PUT(request, { params }) {
 
         // Update the expense
         const { data, error } = await supabase
-            .from('expenses')
+            .from(EXPENSES_TABLE)
             .update({
                 date: expenseData.date,
                 voucher_no: expenseData.voucher_no,
@@ -58,7 +60,7 @@ export async function DELETE(request, { params }) {
 
         // Delete the expense
         const { data, error } = await supabase
-            .from('expenses')
+            .from(EXPENSES_TABLE)
             .delete()
             .eq('id', expenseId)
             .select()
