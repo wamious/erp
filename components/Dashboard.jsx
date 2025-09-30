@@ -2,19 +2,17 @@
 
 import { useState, useEffect } from 'react';
 import {
-  BarChart,
   Bar,
+  BarChart,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  LineChart,
-  Line,
-  Legend
+  ResponsiveContainer
 } from 'recharts';
 import {
   TrendingUp,
@@ -22,13 +20,23 @@ import {
   Users,
   FileText,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
-import { format, subDays, startOfMonth, endOfMonth } from 'date-fns';
+import { format } from 'date-fns';
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  ChartLegend,
+  ChartLegendContent,
+} from "@/components/ui/chart";
 
 export default function Dashboard() {
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [expandedKPI, setExpandedKPI] = useState(null);
   const [stats, setStats] = useState({
     totalExpenses: 0,
     totalVendors: 0,
@@ -78,9 +86,10 @@ export default function Dashboard() {
       const response = await fetch('/api/expenses?action=categories');
       if (!response.ok) throw new Error('Failed to fetch category data');
       const data = await response.json();
-      setCategoryChartData(data.map(item => ({
+      setCategoryChartData(data.map((item, index) => ({
         category: item.category,
-        amount: parseFloat(item.amount)
+        amount: parseFloat(item.amount),
+        fill: COLORS[index % COLORS.length]
       })));
     } catch (error) {
       console.error('Error fetching category data:', error);
@@ -92,10 +101,6 @@ export default function Dashboard() {
       const response = await fetch('/api/expenses?action=monthly');
       if (!response.ok) throw new Error('Failed to fetch monthly data');
       const data = await response.json();
-      setMonthlyChartData(data.map(item => ({
-        month: item.month,
-        amount: parseFloat(item.amount)
-      })));
     } catch (error) {
       console.error('Error fetching monthly data:', error);
     }
@@ -120,7 +125,90 @@ export default function Dashboard() {
   const [monthlyChartData, setMonthlyChartData] = useState([]);
   const [topVendors, setTopVendors] = useState([]);
 
-  const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#F97316'];
+  // Colors for pie chart
+  const COLORS = [
+    'hsl(var(--chart-1))',
+    'hsl(var(--chart-2))',
+    'hsl(var(--chart-3))',
+    'hsl(var(--chart-4))',
+    'hsl(var(--chart-5))',
+    'hsl(220 70% 50%)',
+    'hsl(160 60% 45%)',
+    'hsl(30 80% 55%)',
+    'hsl(280 65% 60%)',
+    'hsl(340 75% 55%)',
+  ];
+
+  // Chart configurations
+  const monthlyChartConfig = {
+    amount: {
+      label: "Amount",
+      color: "hsl(var(--chart-1))",
+    },
+  };
+
+  const vendorChartConfig = {
+    amount: {
+      label: "Amount",
+      color: "hsl(var(--chart-2))",
+    },
+  };
+
+  // Format currency for display
+  const formatCurrency = (value, short = true) => {
+    if (!short) {
+      return `₹${value.toLocaleString()}`;
+    }
+
+    if (value >= 10000000) { // 1 crore
+      return `₹${(value / 10000000).toFixed(1)}Cr`;
+    } else if (value >= 100000) { // 1 lakh
+      return `₹${(value / 100000).toFixed(1)}L`;
+    } else if (value >= 1000) { // 1 thousand
+      return `₹${(value / 1000).toFixed(1)}K`;
+    }
+    return `₹${value.toLocaleString()}`;
+  };
+
+  // Custom tooltip formatter for pie chart
+  const renderPieTooltip = (props) => {
+    if (props.active && props.payload && props.payload.length) {
+      const data = props.payload[0];
+      return (
+        <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
+          <p className="font-medium text-gray-900">{data.payload.category}</p>
+          <p className="text-blue-600 font-semibold">
+            {formatCurrency(data.value, false)}
+          </p>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  // Custom tooltip formatter for other charts
+  const formatTooltipValue = (value) => {
+    return [`₹${parseFloat(value).toLocaleString()}`, 'Amount'];
+  };
+
+  const toggleKPI = (kpiKey) => {
+    setExpandedKPI(expandedKPI === kpiKey ? null : kpiKey);
+  };
+
+  const getKPIDisplayValue = (value, key) => {
+    const isExpanded = expandedKPI === key;
+    return isExpanded ? formatCurrency(value, false) : formatCurrency(value, true);
+  };
+
+  const getKPITextSize = (value, key) => {
+    const isExpanded = expandedKPI === key;
+    if (!isExpanded) return 'text-2xl';
+
+    const fullText = formatCurrency(value, false);
+    if (fullText.length > 15) return 'text-lg';
+    if (fullText.length > 12) return 'text-xl';
+    return 'text-2xl';
+  };
 
   if (loading) {
     return (
@@ -144,11 +232,26 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <div className="flex items-center justify-between">
-            <div>
+            <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-600">Total Expenses</p>
-              <p className="text-3xl font-bold text-gray-900">₹{stats.totalExpenses.toLocaleString()}</p>
+              <div className="flex items-center">
+                <p className={`font-bold text-gray-900 truncate ${getKPITextSize(stats.totalExpenses, 'totalExpenses')}`}
+                  title={formatCurrency(stats.totalExpenses, false)}>
+                  {getKPIDisplayValue(stats.totalExpenses, 'totalExpenses')}
+                </p>
+                <button
+                  onClick={() => toggleKPI('totalExpenses')}
+                  className="ml-2 p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  {expandedKPI === 'totalExpenses' ? (
+                    <Minimize2 className="h-4 w-4" />
+                  ) : (
+                    <Maximize2 className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
             </div>
-            <div className="p-3 bg-blue-50 rounded-full">
+            <div className="p-3 bg-blue-50 rounded-full flex-shrink-0">
               <IndianRupee className="h-6 w-6 text-blue-600" />
             </div>
           </div>
@@ -161,11 +264,11 @@ export default function Dashboard() {
 
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <div className="flex items-center justify-between">
-            <div>
+            <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-600">Total Vendors</p>
-              <p className="text-3xl font-bold text-gray-900">{stats.totalVendors}</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.totalVendors}</p>
             </div>
-            <div className="p-3 bg-green-50 rounded-full">
+            <div className="p-3 bg-green-50 rounded-full flex-shrink-0">
               <Users className="h-6 w-6 text-green-600" />
             </div>
           </div>
@@ -178,11 +281,11 @@ export default function Dashboard() {
 
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <div className="flex items-center justify-between">
-            <div>
+            <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-600">Total Transactions</p>
-              <p className="text-3xl font-bold text-gray-900">{stats.totalTransactions}</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.totalTransactions}</p>
             </div>
-            <div className="p-3 bg-yellow-50 rounded-full">
+            <div className="p-3 bg-yellow-50 rounded-full flex-shrink-0">
               <FileText className="h-6 w-6 text-yellow-600" />
             </div>
           </div>
@@ -195,11 +298,26 @@ export default function Dashboard() {
 
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <div className="flex items-center justify-between">
-            <div>
+            <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-600">Avg Transaction</p>
-              <p className="text-3xl font-bold text-gray-900">₹{stats.avgTransactionAmount.toLocaleString()}</p>
+              <div className="flex items-center">
+                <p className={`font-bold text-gray-900 truncate ${getKPITextSize(stats.avgTransactionAmount, 'avgTransaction')}`}
+                  title={formatCurrency(stats.avgTransactionAmount, false)}>
+                  {getKPIDisplayValue(stats.avgTransactionAmount, 'avgTransaction')}
+                </p>
+                <button
+                  onClick={() => toggleKPI('avgTransaction')}
+                  className="ml-2 p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  {expandedKPI === 'avgTransaction' ? (
+                    <Minimize2 className="h-4 w-4" />
+                  ) : (
+                    <Maximize2 className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
             </div>
-            <div className="p-3 bg-purple-50 rounded-full">
+            <div className="p-3 bg-purple-50 rounded-full flex-shrink-0">
               <TrendingUp className="h-6 w-6 text-purple-600" />
             </div>
           </div>
@@ -215,90 +333,87 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Category Breakdown */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Expenses by Category</h3>
-          <div className="h-80">
-            <ResponsiveContainer width="100%" height="80%">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Expenses by Category</h3>
+            <div className="text-sm text-gray-500">
+              {categoryChartData.length} categories
+            </div>
+          </div>
+          <div className="h-[350px] flex items-center justify-center">
+            <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
                   data={categoryChartData}
                   cx="50%"
                   cy="50%"
-                  labelLine={false}
-                  outerRadius={100}
-                  fill="#8884d8"
+                  innerRadius={60}
+                  outerRadius={120}
+                  paddingAngle={2}
                   dataKey="amount"
                 >
                   {categoryChartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    <Cell key={`cell-${index}`} fill={entry.fill} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(value) => [`₹${value.toLocaleString()}`]} />
-                <Legend
-                  layout="horizontal"
-                  verticalAlign="bottom"
-                  align="center"
-                  formatter={(value, entry, index) => {
-                    const total = categoryChartData.reduce((sum, item) => sum + item.amount, 0);
-                    const percent = ((categoryChartData[index].amount / total) * 100).toFixed(0);
-                    return `${categoryChartData[index].category} (${percent}%)`;
-                  }}
-                />
+                <ChartTooltip content={renderPieTooltip} />
               </PieChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-
         {/* Monthly Trend */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
-            Monthly Expense Trend (Current FY)
-          </h3>
-          <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart
-                data={monthlyChartData.filter((item) => {
-                  const now = new Date();
-                  const currentYear = now.getFullYear();
-                  const currentMonth = now.getMonth() + 1; // 1-based
-                  const fyStartYear = currentMonth < 4 ? currentYear - 1 : currentYear;
-                  const fyStartDate = new Date(fyStartYear, 3, 1); // April
-                  const expDate = new Date(item.month); // assumes "month" is a valid date string
-
-                  return expDate >= fyStartDate && expDate <= now;
-                })}
-              >
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis
-                  dataKey="month"
-                  tickFormatter={(tick) => {
-                    const date = new Date(tick);
-                    return date.toLocaleString('default', { month: 'short' }); // e.g. Apr
-                  }}
-                  angle={-45}
-                  textAnchor="end"
-                  height={60}
-                />
-                <YAxis
-                  tickFormatter={(value) => `₹${value.toLocaleString()}`}
-                />
-                <Tooltip
-                  formatter={(value) => [`₹${value.toLocaleString()}`, 'Amount']}
-                  labelFormatter={(label) => {
-                    const date = new Date(label);
-                    return date.toLocaleString('default', { month: 'long', year: 'numeric' });
-                  }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="amount"
-                  stroke="#3B82F6"
-                  strokeWidth={3}
-                  dot={{ fill: '#3B82F6', strokeWidth: 2, r: 6 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Monthly Expense Trend</h3>
+            <div className="text-sm text-gray-500">
+              Current FY
+            </div>
           </div>
+          <ChartContainer config={monthlyChartConfig} className="h-[300px]">
+            <LineChart
+              data={monthlyChartData}
+              margin={{
+                left: 20,
+                right: 20,
+                top: 20,
+                bottom: 20,
+              }}
+            >
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis
+                dataKey="month"
+                tickLine={false}
+                axisLine={false}
+                tickMargin={8}
+                tick={{ fontSize: 12 }}
+              />
+              <YAxis
+                tickLine={false}
+                axisLine={false}
+                tickMargin={8}
+                tick={{ fontSize: 12 }}
+                tickFormatter={(value) => formatCurrency(value, true)}
+              />
+              <ChartTooltip
+                content={<ChartTooltipContent formatter={formatTooltipValue} />}
+              />
+              <Line
+                dataKey="amount"
+                type="monotone"
+                stroke="var(--color-amount)"
+                strokeWidth={3}
+                dot={{
+                  fill: "var(--color-amount)",
+                  strokeWidth: 2,
+                  r: 4
+                }}
+                activeDot={{
+                  r: 6,
+                  strokeWidth: 2
+                }}
+              />
+            </LineChart>
+          </ChartContainer>
         </div>
       </div>
 
@@ -306,31 +421,59 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Top Vendors */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Top 5 Vendors</h3>
-          <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={topVendors} layout="horizontal">
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" formatter={(value) => `₹${value.toLocaleString()}`} />
-                <YAxis
-                  type="category"
-                  dataKey="vendor"
-                  width={100}
-                  tick={{ fontSize: 12 }}
-                />
-                <Tooltip formatter={(value) => [`₹${value.toLocaleString()}`, 'Amount']} />
-                <Bar dataKey="amount" fill="#10B981" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Top 5 Vendors</h3>
+            <div className="text-sm text-gray-500">
+              By total amount
+            </div>
           </div>
+          <ChartContainer config={vendorChartConfig} className="h-[350px]">
+            <BarChart
+              data={topVendors}
+              layout="horizontal"
+              margin={{
+                left: 12,
+                right: 12,
+                top: 12,
+                bottom: 12,
+              }}
+            >
+              <CartesianGrid horizontal={false} />
+              <XAxis
+                type="number"
+                tickLine={false}
+                axisLine={false}
+                tickMargin={8}
+                tickFormatter={(value) => formatCurrency(value, true)}
+              />
+              <YAxis
+                dataKey="vendor"
+                type="category"
+                tickLine={false}
+                axisLine={false}
+                tickMargin={8}
+                width={100}
+                tick={{ fontSize: 12 }}
+              />
+              <ChartTooltip
+                content={<ChartTooltipContent formatter={formatTooltipValue} />}
+              />
+              <Bar dataKey="amount" fill="var(--color-amount)" radius={[0, 4, 4, 0]} />
+            </BarChart>
+          </ChartContainer>
         </div>
 
         {/* Recent Activity */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Transactions</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Recent Transactions</h3>
+            <div className="text-sm text-gray-500">
+              Latest 5 entries
+            </div>
+          </div>
           <div className="space-y-4">
             {expenses.slice(0, 5).map((expense, index) => (
-              <div key={index} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-b-0">
+              <div key={index} className="flex items-center justify-between py-3 border-b border-gray-100 last:border-b-0">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900 truncate">
                     {expense.vendor_name}
@@ -339,9 +482,9 @@ export default function Dashboard() {
                     {expense.category} • {format(new Date(expense.date), 'MMM dd')}
                   </p>
                 </div>
-                <div className="text-right">
+                <div className="text-right ml-4">
                   <p className="text-sm font-semibold text-gray-900">
-                    ₹{parseFloat(expense.net_payment || 0).toLocaleString()}
+                    {formatCurrency(parseFloat(expense.net_payment || 0), true)}
                   </p>
                   <span className={`inline-block px-2 py-1 text-xs rounded-full ${expense.payment_mode === 'UPI'
                     ? 'bg-green-100 text-green-800'
