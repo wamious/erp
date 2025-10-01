@@ -204,11 +204,13 @@ export default function Dashboard() {
   const renderPieTooltip = (props) => {
     if (props.active && props.payload && props.payload.length) {
       const data = props.payload[0];
+      const total = categoryChartData.reduce((sum, item) => sum + item.amount, 0);
+      const percentage = ((data.value / total) * 100).toFixed(1);
       return (
         <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
           <p className="font-medium text-gray-900">{data.payload.category}</p>
           <p className="text-blue-600 font-semibold">
-            {formatCurrency(data.value, false)}
+            {formatCurrency(data.value, false)} ({percentage}%)
           </p>
         </div>
       );
@@ -217,8 +219,8 @@ export default function Dashboard() {
   };
 
   // Custom tooltip formatter for other charts
-  const formatTooltipValue = (value) => {
-    return [`₹${parseFloat(value).toLocaleString()}`, 'Amount'];
+  const formatTooltipValue = (value, name) => {
+    return [`₹${parseFloat(value).toLocaleString()}`, ''];
   };
 
   const toggleKPI = (kpiKey) => {
@@ -378,7 +380,7 @@ export default function Dashboard() {
                   cy="50%"
                   innerRadius={60}
                   outerRadius={120}
-                  paddingAngle={2}
+                  paddingAngle={0}
                   dataKey="amount"
                 >
                   {categoryChartData.map((entry, index) => (
@@ -399,51 +401,53 @@ export default function Dashboard() {
               Current FY
             </div>
           </div>
-          <ChartContainer config={monthlyChartConfig} className="h-[300px]">
-            <LineChart
-              data={monthlyChartData}
-              margin={{
-                left: 20,
-                right: 20,
-                top: 20,
-                bottom: 20,
-              }}
-            >
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis
-                dataKey="month"
-                tickLine={false}
-                axisLine={false}
-                tickMargin={8}
-                tick={{ fontSize: 12 }}
-              />
-              <YAxis
-                tickLine={false}
-                axisLine={false}
-                tickMargin={8}
-                tick={{ fontSize: 12 }}
-                tickFormatter={(value) => formatCurrency(value, true)}
-              />
-              <ChartTooltip
-                content={<ChartTooltipContent formatter={formatTooltipValue} />}
-              />
-              <Line
-                dataKey="amount"
-                type="monotone"
-                stroke="var(--color-amount)"
-                strokeWidth={3}
-                dot={{
-                  fill: "var(--color-amount)",
-                  strokeWidth: 2,
-                  r: 4
+          <div className="w-full overflow-x-auto">
+            <ChartContainer config={monthlyChartConfig} className="h-[300px] min-w-[400px]">
+              <LineChart
+                data={monthlyChartData}
+                margin={{
+                  left: 20,
+                  right: 20,
+                  top: 20,
+                  bottom: 20,
                 }}
-                activeDot={{
-                  r: 6,
-                  strokeWidth: 2
-                }}
-              />
-            </LineChart>
-          </ChartContainer>
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="month"
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  tick={{ fontSize: 12 }}
+                />
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  tick={{ fontSize: 12 }}
+                  tickFormatter={(value) => formatCurrency(value, true)}
+                />
+                <ChartTooltip
+                  content={<ChartTooltipContent formatter={formatTooltipValue} />}
+                />
+                <Line
+                  dataKey="amount"
+                  type="monotone"
+                  stroke="var(--color-amount)"
+                  strokeWidth={3}
+                  dot={{
+                    fill: "var(--color-amount)",
+                    strokeWidth: 2,
+                    r: 4
+                  }}
+                  activeDot={{
+                    r: 6,
+                    strokeWidth: 2
+                  }}
+                />
+              </LineChart>
+            </ChartContainer>
+          </div>
         </div>
       </div>
 
