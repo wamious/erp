@@ -2,9 +2,12 @@
 
 import { useState, useEffect, Fragment } from 'react';
 import { format } from 'date-fns';
-import { Search, Filter, Download, Eye, CreditCard as Edit2, Trash2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, X, TriangleAlert as AlertTriangle } from 'lucide-react';
+import { Search, Filter, Download, Eye, CreditCard as Edit2, Trash2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, X, TriangleAlert as AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import toast from 'react-hot-toast';
+import * as XLSX from 'xlsx';
+import { jsPDF } from 'jspdf';
+import 'jspdf-autotable';
 
 export default function ExpenseList() {
   const { isAdmin } = useAuth();
@@ -13,7 +16,7 @@ export default function ExpenseList() {
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(10);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [expandedRow, setExpandedRow] = useState(null);
   const [editingExpense, setEditingExpense] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -22,6 +25,11 @@ export default function ExpenseList() {
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [updating, setUpdating] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+
+  // Sorting state
+  const [sortField, setSortField] = useState('date');
+  const [sortDirection, setSortDirection] = useState('desc');
 
   useEffect(() => {
     fetchExpenses();
@@ -41,8 +49,49 @@ export default function ExpenseList() {
     }
   };
 
+  // Sorting function
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const getSortIcon = (field) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="h-4 w-4 text-gray-400" />;
+    }
+    return sortDirection === 'asc' ?
+      <ArrowUp className="h-4 w-4 text-blue-600" /> :
+      <ArrowDown className="h-4 w-4 text-blue-600" />;
+  };
+
+  // Sort expenses
+  const sortedExpenses = [...expenses].sort((a, b) => {
+    let aValue = a[sortField];
+    let bValue = b[sortField];
+
+    // Handle different data types
+    if (sortField === 'date' || sortField === 'payment_date') {
+      aValue = new Date(aValue || 0);
+      bValue = new Date(bValue || 0);
+    } else if (sortField === 'net_payment' || sortField === 'invoice_amount') {
+      aValue = parseFloat(aValue || 0);
+      bValue = parseFloat(bValue || 0);
+    } else {
+      aValue = (aValue || '').toString().toLowerCase();
+      bValue = (bValue || '').toString().toLowerCase();
+    }
+
+    if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+    if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+    return 0;
+  });
+
   // Filter expenses based on search and category
-  const filteredExpenses = expenses.filter((expense) => {
+  const filteredExpenses = sortedExpenses.filter((expense) => {
     const matchesSearch =
       expense.vendor_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       expense.particulars?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -58,9 +107,15 @@ export default function ExpenseList() {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedExpenses = filteredExpenses.slice(startIndex, startIndex + itemsPerPage);
 
+  // Reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, categoryFilter, itemsPerPage]);
+
   // Get unique categories for filter
   const categories = [...new Set(expenses.map(expense => expense.category).filter(Boolean))];
 
+  // Export functions
   const exportToCSV = () => {
     const headers = [
       'Date', 'Voucher No', 'Category', 'Vendor Name', 'Particulars',
@@ -94,6 +149,83 @@ export default function ExpenseList() {
     a.download = `expenses_${format(new Date(), 'yyyy-MM-dd')}.csv`;
     a.click();
     window.URL.revokeObjectURL(url);
+    setShowExportMenu(false);
+  };
+
+  const exportToExcel = () => {
+    const worksheet = XLSX.utils.json_to_sheet(
+      filteredExpenses.map(expense => ({
+        'Date': expense.date,
+        'Voucher No': expense.voucher_no,
+        'Category': expense.category,
+        'Vendor Name': expense.vendor_name,
+        'Particulars': expense.particulars,
+        'Payment Mode': expense.payment_mode,
+        'Invoice Amount': expense.invoice_amount,
+        'GST %': expense.gst_percentage,
+        'GST Amount': expense.gst_amount,
+        'TDS Deducted': expense.tds_deducted,
+        'Net Payment': expense.net_payment,
+        'Payment Date': expense.payment_date,
+        'Remarks': expense.remarks || ''
+      }))
+    );
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Expenses');
+    XLSX.writeFile(workbook, `expenses_${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
+    setShowExportMenu(false);
+  };
+
+  const exportToPDF = () => {
+    const doc = new jsPDF('l', 'mm', 'a4'); // landscape orientation
+
+    doc.setFontSize(16);
+    doc.text('Expense Report', 14, 15);
+    doc.setFontSize(10);
+    doc.text(`Generated on: ${format(new Date(), 'MMM dd, yyyy HH:mm')}`, 14, 25);
+
+    const tableData = filteredExpenses.map(expense => [
+      format(new Date(expense.date), 'dd/MM/yyyy'),
+      expense.voucher_no,
+      expense.category,
+      expense.vendor_name,
+      expense.particulars.length > 30 ? expense.particulars.substring(0, 30) + '...' : expense.particulars,
+      expense.payment_mode,
+      `₹${parseFloat(expense.net_payment || 0).toLocaleString()}`
+    ]);
+
+    doc.autoTable({
+      head: [['Date', 'Voucher', 'Category', 'Vendor', 'Particulars', 'Payment Mode', 'Net Payment']],
+      body: tableData,
+      startY: 35,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [59, 130, 246] },
+      columnStyles: {
+        0: { cellWidth: 25 },
+        1: { cellWidth: 30 },
+        2: { cellWidth: 35 },
+        3: { cellWidth: 40 },
+        4: { cellWidth: 60 },
+        5: { cellWidth: 30 },
+        6: { cellWidth: 30 }
+      }
+    });
+
+    doc.save(`expenses_${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+    setShowExportMenu(false);
+  };
+
+  const exportToJSON = () => {
+    const jsonData = JSON.stringify(filteredExpenses, null, 2);
+    const blob = new Blob([jsonData], { type: 'application/json' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `expenses_${format(new Date(), 'yyyy-MM-dd')}.json`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+    setShowExportMenu(false);
   };
 
   const handleViewExpense = (expense) => {
@@ -247,17 +379,51 @@ export default function ExpenseList() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-lg font-semibold text-gray-900">All Expenses</h2>
             <div className="mt-4 sm:mt-0 flex items-center space-x-3">
-              <button
-                onClick={exportToCSV}
-                className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:ring-2 focus:ring-blue-500"
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Export CSV
-              </button>
+              <div className="relative">
+                <button
+                  onClick={() => setShowExportMenu(!showExportMenu)}
+                  className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:ring-2 focus:ring-blue-500"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Export
+                  <ChevronDown className="h-4 w-4 ml-1" />
+                </button>
+
+                {showExportMenu && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-10">
+                    <div className="py-1">
+                      <button
+                        onClick={exportToCSV}
+                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                      >
+                        Export as CSV
+                      </button>
+                      <button
+                        onClick={exportToExcel}
+                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                      >
+                        Export as Excel
+                      </button>
+                      {/* <button
+                        onClick={exportToPDF}
+                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                      >
+                        Export as PDF
+                      </button> */}
+                      <button
+                        onClick={exportToJSON}
+                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                      >
+                        Export as JSON
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Filters */}
+          {/* Filters and Controls */}
           <div className="mt-4 flex flex-col sm:flex-row gap-4">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -285,6 +451,21 @@ export default function ExpenseList() {
                 ))}
               </select>
             </div>
+
+            <div className="flex items-center space-x-2">
+              <span className="text-sm text-gray-700">Show:</span>
+              <select
+                value={itemsPerPage}
+                onChange={(e) => setItemsPerPage(Number(e.target.value))}
+                className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+              <span className="text-sm text-gray-700">per page</span>
+            </div>
           </div>
         </div>
 
@@ -293,23 +474,59 @@ export default function ExpenseList() {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Date
+                <th
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  onClick={() => handleSort('date')}
+                >
+                  <div className="flex items-center space-x-1">
+                    <span>Date</span>
+                    {getSortIcon('date')}
+                  </div>
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Voucher No.
+                <th
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  onClick={() => handleSort('voucher_no')}
+                >
+                  <div className="flex items-center space-x-1">
+                    <span>Voucher No.</span>
+                    {getSortIcon('voucher_no')}
+                  </div>
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Vendor
+                <th
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  onClick={() => handleSort('vendor_name')}
+                >
+                  <div className="flex items-center space-x-1">
+                    <span>Vendor</span>
+                    {getSortIcon('vendor_name')}
+                  </div>
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Category
+                <th
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  onClick={() => handleSort('category')}
+                >
+                  <div className="flex items-center space-x-1">
+                    <span>Category</span>
+                    {getSortIcon('category')}
+                  </div>
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Payment Mode
+                <th
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  onClick={() => handleSort('payment_mode')}
+                >
+                  <div className="flex items-center space-x-1">
+                    <span>Payment Mode</span>
+                    {getSortIcon('payment_mode')}
+                  </div>
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Net Payment
+                <th
+                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  onClick={() => handleSort('net_payment')}
+                >
+                  <div className="flex items-center justify-end space-x-1">
+                    <span>Net Payment</span>
+                    {getSortIcon('net_payment')}
+                  </div>
                 </th>
                 <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
@@ -754,6 +971,14 @@ export default function ExpenseList() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Click outside to close export menu */}
+      {showExportMenu && (
+        <div
+          className="fixed inset-0 z-5"
+          onClick={() => setShowExportMenu(false)}
+        />
       )}
     </div>
   );
