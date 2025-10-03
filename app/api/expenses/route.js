@@ -7,6 +7,10 @@ export async function GET(request) {
     const action = searchParams.get('action');
 
     switch (action) {
+      case 'latest-voucher':
+        const latestExpense = await dbHelpers.getLatestVoucherNumber();
+        return NextResponse.json({ latestVoucher: latestExpense?.voucher_no || null });
+
       case 'stats':
         const stats = await dbHelpers.getExpenseStats();
         return NextResponse.json(stats);
