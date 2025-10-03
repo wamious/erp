@@ -3,11 +3,13 @@
 import { useState, useEffect, Fragment } from 'react';
 import { format } from 'date-fns';
 import { Search, Filter, Download, Eye, CreditCard as Edit2, Trash2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, X, TriangleAlert as AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Upload, FileText } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
+import { supabase } from '@/lib/supabase';
 
 export default function ExpenseList() {
   const { isAdmin } = useAuth();
@@ -26,6 +28,8 @@ export default function ExpenseList() {
   const [deleting, setDeleting] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [uploading, setUploading] = useState(false);
 
   // Sorting state
   const [sortField, setSortField] = useState('date');
@@ -242,6 +246,7 @@ export default function ExpenseList() {
       date: format(new Date(expense.date), 'yyyy-MM-dd'),
       payment_date: expense.payment_date ? format(new Date(expense.payment_date), 'yyyy-MM-dd') : '',
     });
+    setUploadedFiles(expense.attachments || []);
     setShowEditModal(true);
   };
 
@@ -262,6 +267,7 @@ export default function ExpenseList() {
           gst_amount: parseFloat(editingExpense.gst_amount),
           tds_deducted: parseFloat(editingExpense.tds_deducted),
           net_payment: parseFloat(editingExpense.net_payment),
+          attachments: uploadedFiles,
         }),
       });
 
@@ -269,6 +275,7 @@ export default function ExpenseList() {
         toast.success('Expense updated successfully!');
         setShowEditModal(false);
         setEditingExpense(null);
+        setUploadedFiles([]);
         fetchExpenses();
       } else {
         const data = await response.json();
@@ -296,6 +303,35 @@ export default function ExpenseList() {
     setDeleting(true);
 
     try {
+      // Delete associated files from storage first
+      if (deleteExpense.attachments && deleteExpense.attachments.length > 0) {
+        const filePaths = deleteExpense.attachments.map(file => file.path);
+        const { error: storageError } = await supabase.storage
+          .from('erp-expense-documents')
+          .remove(filePaths);
+
+        if (storageError) {
+          console.error('Error deleting files from storage:', storageError);
+          // Continue with expense deletion even if file deletion fails
+        }
+      }
+
+      // Find the expense to get its attachments
+      const expenseToDelete = expenses.find(exp => exp.id === expenseId);
+
+      // Delete associated files from storage first
+      if (expenseToDelete?.attachments && expenseToDelete.attachments.length > 0) {
+        const filePaths = expenseToDelete.attachments.map(file => file.path);
+        const { error: storageError } = await supabase.storage
+          .from('expense-documents')
+          .remove(filePaths);
+
+        if (storageError) {
+          console.error('Error deleting files from storage:', storageError);
+          // Continue with expense deletion even if file deletion fails
+        }
+      }
+
       const response = await fetch(`/api/expenses/${deleteExpense.id}`, {
         method: 'DELETE',
       });
@@ -339,6 +375,97 @@ export default function ExpenseList() {
     }
 
     setEditingExpense(updatedExpense);
+  };
+
+  const handleFileUpload = async (event) => {
+    const files = Array.from(event.target.files);
+    if (files.length === 0) return;
+
+    setUploading(true);
+    const uploadPromises = files.map(async (file) => {
+      try {
+        // Validate file type
+        const allowedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+        if (!allowedTypes.includes(file.type)) {
+          toast.error(`File type ${file.type} not allowed. Please upload PDF, JPEG, or PNG files.`);
+          return null;
+        }
+
+        // Validate file size (max 5MB)
+        if (file.size > 5 * 1024 * 1024) {
+          toast.error(`File ${file.name} is too large. Maximum size is 5MB.`);
+          return null;
+        }
+
+        // Generate unique filename
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+        const filePath = `expense-attachments/${fileName}`;
+
+        // Upload to Supabase Storage
+        const { data, error } = await supabase.storage
+          .from('erp-expense-documents')
+          .upload(filePath, file);
+
+        if (error) {
+          console.error('Upload error:', error);
+          toast.error(`Failed to upload ${file.name}`);
+          return null;
+        }
+
+        // Get public URL
+        const { data: { publicUrl } } = supabase.storage
+          .from('erp-expense-documents')
+          .getPublicUrl(filePath);
+
+        return {
+          name: file.name,
+          path: filePath,
+          url: publicUrl,
+          type: file.type,
+          size: file.size
+        };
+      } catch (error) {
+        console.error('File upload error:', error);
+        toast.error(`Failed to upload ${file.name}`);
+        return null;
+      }
+    });
+
+    const results = await Promise.all(uploadPromises);
+    const successfulUploads = results.filter(result => result !== null);
+
+    setUploadedFiles(prev => [...prev, ...successfulUploads]);
+    setUploading(false);
+
+    if (successfulUploads.length > 0) {
+      toast.success(`${successfulUploads.length} file(s) uploaded successfully`);
+    }
+
+    // Clear the input
+    event.target.value = '';
+  };
+
+  const removeFile = async (fileToRemove) => {
+    try {
+      // Remove from Supabase Storage
+      const { error } = await supabase.storage
+        .from('erp-expense-documents')
+        .remove([fileToRemove.path]);
+
+      if (error) {
+        console.error('Error removing file:', error);
+        toast.error('Failed to remove file from storage');
+        return;
+      }
+
+      // Remove from local state
+      setUploadedFiles(prev => prev.filter(file => file.path !== fileToRemove.path));
+      toast.success('File removed successfully');
+    } catch (error) {
+      console.error('Error removing file:', error);
+      toast.error('Failed to remove file');
+    }
   };
 
   const categories_list = [
@@ -404,12 +531,12 @@ export default function ExpenseList() {
                       >
                         Export as Excel
                       </button>
-                      {/* <button
+                      <button
                         onClick={exportToPDF}
                         className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
                       >
                         Export as PDF
-                      </button> */}
+                      </button>
                       <button
                         onClick={exportToJSON}
                         className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
@@ -621,6 +748,33 @@ export default function ExpenseList() {
                             <span className="font-medium text-gray-700">Remarks:</span>
                             <p className="text-gray-900 mt-1">{expense.remarks || 'No remarks'}</p>
                           </div>
+                          {expense.attachments && expense.attachments.length > 0 && (
+                            <div className="md:col-span-3">
+                              <span className="font-medium text-gray-700">Attachments:</span>
+                              <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                {expense.attachments.map((file, index) => (
+                                  <div key={index} className="flex items-center space-x-2 p-2 bg-white border border-gray-200 rounded-md">
+                                    <FileText className="h-4 w-4 text-blue-500 flex-shrink-0" />
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-medium text-gray-900 truncate">{file.name}</p>
+                                      <p className="text-xs text-gray-500">
+                                        {file.size ? (file.size / 1024 / 1024).toFixed(2) + ' MB' : 'Unknown size'}
+                                      </p>
+                                    </div>
+                                    <a
+                                      href={file.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-blue-600 hover:text-blue-800 flex-shrink-0"
+                                      title="View file"
+                                    >
+                                      <Eye className="h-4 w-4" />
+                                    </a>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -872,11 +1026,92 @@ export default function ExpenseList() {
                 </div>
               </div>
 
+              {/* File Upload Section */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h4 className="text-sm font-medium text-gray-900 mb-4 flex items-center">
+                  <Upload className="h-4 w-4 mr-2" />
+                  Attachments (Invoice, Payment Memo, etc.)
+                </h4>
+
+                <div className="space-y-4">
+                  <div>
+                    <input
+                      type="file"
+                      id="edit-file-upload"
+                      multiple
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      onChange={handleFileUpload}
+                      disabled={uploading}
+                      className="hidden"
+                    />
+                    <label
+                      htmlFor="edit-file-upload"
+                      className={`flex items-center justify-center w-full px-4 py-6 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-gray-400 transition-colors ${uploading ? 'opacity-50 cursor-not-allowed' : ''
+                        }`}
+                    >
+                      <div className="text-center">
+                        <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                        <p className="text-sm text-gray-600">
+                          {uploading ? 'Uploading...' : 'Click to upload files or drag and drop'}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          PDF, JPEG, PNG up to 5MB each
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+
+                  {/* Uploaded Files List */}
+                  {uploadedFiles.length > 0 && (
+                    <div className="space-y-2">
+                      <h5 className="text-sm font-medium text-gray-700">Uploaded Files:</h5>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {uploadedFiles.map((file, index) => (
+                          <div key={index} className="flex items-center justify-between bg-white p-3 rounded-md border border-gray-200">
+                            <div className="flex items-center space-x-3 flex-1 min-w-0">
+                              <FileText className="h-5 w-5 text-blue-500 flex-shrink-0" />
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium text-gray-900 truncate">{file.name}</p>
+                                <p className="text-xs text-gray-500">
+                                  {file.size ? (file.size / 1024 / 1024).toFixed(2) + ' MB' : 'Unknown size'}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center space-x-2 flex-shrink-0">
+                              <a
+                                href={file.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:text-blue-800"
+                                title="View file"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </a>
+                              <button
+                                type="button"
+                                onClick={() => removeFile(file)}
+                                className="text-red-500 hover:text-red-700 transition-colors"
+                                title="Remove file"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* Submit Buttons */}
               <div className="flex items-center justify-end space-x-3 pt-6 border-t border-gray-200">
                 <button
                   type="button"
-                  onClick={() => setShowEditModal(false)}
+                  onClick={() => {
+                    setShowEditModal(false);
+                    setUploadedFiles([]);
+                  }}
                   className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
                 >
                   Cancel
