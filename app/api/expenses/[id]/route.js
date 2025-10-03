@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 
-const EXPENSES_TABLE = 'ERP_EXPENSES';
+const EXPENSES_TABLE = 'erp_expenses';
 
 // Update expense (admin only)
 export async function PUT(request, { params }) {
