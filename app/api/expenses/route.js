@@ -7,6 +7,10 @@ export async function GET(request) {
     const action = searchParams.get('action');
 
     switch (action) {
+      case 'latest-voucher':
+        const latestExpense = await dbHelpers.getLatestVoucherNumber();
+        return NextResponse.json({ latestVoucher: latestExpense?.voucher_no || null });
+
       case 'stats':
         const stats = await dbHelpers.getExpenseStats();
         return NextResponse.json(stats);
@@ -39,7 +43,6 @@ export async function GET(request) {
 export async function POST(request) {
   try {
     const expenseData = await request.json();
-    // console.log('Received expense data:', expenseData);
     const newExpense = await dbHelpers.insertExpense(expenseData);
     return NextResponse.json(newExpense, { status: 201 });
   } catch (error) {
