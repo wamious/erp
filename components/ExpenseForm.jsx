@@ -10,6 +10,8 @@ import toast from 'react-hot-toast';
 export default function ExpenseForm({ onExpenseAdded }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitMessage, setSubmitMessage] = useState('');
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [uploading, setUploading] = useState(false);
 
   const {
     register,
@@ -121,6 +123,97 @@ export default function ExpenseForm({ onExpenseAdded }) {
     'Debit Card'
   ];
 
+  const handleFileUpload = async (event) => {
+    const files = Array.from(event.target.files);
+    if (files.length === 0) return;
+
+    setUploading(true);
+    const uploadPromises = files.map(async (file) => {
+      try {
+        // Validate file type
+        const allowedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+        if (!allowedTypes.includes(file.type)) {
+          toast.error(`File type ${file.type} not allowed. Please upload PDF, JPEG, or PNG files.`);
+          return null;
+        }
+
+        // Validate file size (max 5MB)
+        if (file.size > 5 * 1024 * 1024) {
+          toast.error(`File ${file.name} is too large. Maximum size is 5MB.`);
+          return null;
+        }
+
+        // Generate unique filename
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+        const filePath = `expense-attachments/${fileName}`;
+
+        // Upload to Supabase Storage
+        const { data, error } = await supabase.storage
+          .from('erp-expense-documents')
+          .upload(filePath, file);
+
+        if (error) {
+          console.error('Upload error:', error);
+          toast.error(`Failed to upload ${file.name}`);
+          return null;
+        }
+
+        // Get public URL
+        const { data: { publicUrl } } = supabase.storage
+          .from('expense-documents')
+          .getPublicUrl(filePath);
+
+        return {
+          name: file.name,
+          path: filePath,
+          url: publicUrl,
+          type: file.type,
+          size: file.size
+        };
+      } catch (error) {
+        console.error('File upload error:', error);
+        toast.error(`Failed to upload ${file.name}`);
+        return null;
+      }
+    });
+
+    const results = await Promise.all(uploadPromises);
+    const successfulUploads = results.filter(result => result !== null);
+
+    setUploadedFiles(prev => [...prev, ...successfulUploads]);
+    setUploading(false);
+
+    if (successfulUploads.length > 0) {
+      toast.success(`${successfulUploads.length} file(s) uploaded successfully`);
+    }
+
+    // Clear the input
+    event.target.value = '';
+  };
+
+  const removeFile = async (fileToRemove) => {
+    try {
+      // Remove from Supabase Storage
+      const { error } = await supabase.storage
+        .from('erp-expense-documents')
+        .remove([fileToRemove.path]);
+
+      if (error) {
+        console.error('Error removing file:', error);
+        toast.error('Failed to remove file from storage');
+        return;
+      }
+
+      // Remove from local state
+      setUploadedFiles(prev => prev.filter(file => file.path !== fileToRemove.path));
+      toast.success('File removed successfully');
+    } catch (error) {
+      console.error('Error removing file:', error);
+      toast.error('Failed to remove file');
+    }
+  };
+
   const onSubmit = async (data) => {
     setIsSubmitting(true);
     setSubmitMessage('');
@@ -138,6 +231,7 @@ export default function ExpenseForm({ onExpenseAdded }) {
           gst_amount: parseFloat(data.gst_amount),
           tds_deducted: parseFloat(data.tds_deducted),
           net_payment: parseFloat(data.net_payment),
+          attachments: uploadedFiles,
         }),
       });
 
@@ -146,6 +240,7 @@ export default function ExpenseForm({ onExpenseAdded }) {
       }
 
       setSubmitMessage('Expense added successfully!');
+      setUploadedFiles([]);
       reset({
         date: format(new Date(), 'yyyy-MM-dd'),
         payment_date: format(new Date(), 'yyyy-MM-dd'),
@@ -404,6 +499,69 @@ export default function ExpenseForm({ onExpenseAdded }) {
             </div>
           </div>
 
+          {/* File Upload Section */}
+          <div className="bg-gray-50 rounded-lg p-4">
+            <h3 className="text-sm font-medium text-gray-900 mb-4 flex items-center">
+              <Upload className="h-4 w-4 mr-2" />
+              Attachments (Invoice, Payment Memo, etc.)
+            </h3>
+
+            <div className="space-y-4">
+              <div>
+                <input
+                  type="file"
+                  id="file-upload"
+                  multiple
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  onChange={handleFileUpload}
+                  disabled={uploading}
+                  className="hidden"
+                />
+                <label
+                  htmlFor="file-upload"
+                  className={`flex items-center justify-center w-full px-4 py-6 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-gray-400 transition-colors ${uploading ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                >
+                  <div className="text-center">
+                    <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-sm text-gray-600">
+                      {uploading ? 'Uploading...' : 'Click to upload files or drag and drop'}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      PDF, JPEG, PNG up to 5MB each
+                    </p>
+                  </div>
+                </label>
+              </div>
+
+              {/* Uploaded Files List */}
+              {uploadedFiles.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-medium text-gray-700">Uploaded Files:</h4>
+                  {uploadedFiles.map((file, index) => (
+                    <div key={index} className="flex items-center justify-between bg-white p-3 rounded-md border border-gray-200">
+                      <div className="flex items-center space-x-3">
+                        <FileText className="h-5 w-5 text-blue-500" />
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">{file.name}</p>
+                          <p className="text-xs text-gray-500">
+                            {(file.size / 1024 / 1024).toFixed(2)} MB
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeFile(file)}
+                        className="text-red-500 hover:text-red-700 transition-colors"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
           {/* Submit Button */}
           <div className="flex items-center justify-between pt-6 border-t border-gray-200">
             <div>
