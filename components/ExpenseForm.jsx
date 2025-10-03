@@ -3,7 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { format } from 'date-fns';
-import { Save, Calculator } from 'lucide-react';
+import { Save, Calculator, Upload, X, FileText } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
+import toast from 'react-hot-toast';
 
 export default function ExpenseForm({ onExpenseAdded }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -22,6 +24,7 @@ export default function ExpenseForm({ onExpenseAdded }) {
       payment_date: format(new Date(), 'yyyy-MM-dd'),
       gst_percentage: 0,
       tds_deducted: 0,
+      voucher_no: '',
     }
   });
 
@@ -46,6 +49,55 @@ export default function ExpenseForm({ onExpenseAdded }) {
     setValue('gst_amount', gstAmount.toFixed(2));
     setValue('net_payment', netPayment.toFixed(2));
   }, [invoiceAmount, gstPercentage, tdsDeducted, setValue, gstAmount, netPayment]);
+
+  // Auto-generate voucher number on component mount
+  useEffect(() => {
+    generateVoucherNumber();
+  }, []);
+
+  const generateVoucherNumber = async () => {
+    try {
+      const response = await fetch('/api/expenses?action=latest-voucher');
+      if (response.ok) {
+        const data = await response.json();
+        const nextVoucherNo = generateNextVoucherNumber(data.latestVoucher);
+        setValue('voucher_no', nextVoucherNo);
+      }
+    } catch (error) {
+      console.error('Error generating voucher number:', error);
+      // Fallback to default format
+      const currentYear = new Date().getFullYear();
+      setValue('voucher_no', `EXP/${currentYear}/0001`);
+    }
+  };
+
+  const generateNextVoucherNumber = (latestVoucher) => {
+    const currentYear = new Date().getFullYear();
+
+    if (!latestVoucher) {
+      return `EXP/${currentYear}/0001`;
+    }
+
+    // Parse the latest voucher number (format: EXP/YYYY/NNNN)
+    const match = latestVoucher.match(/^EXP\/(\d{4})\/(\d+)$/);
+
+    if (!match) {
+      return `EXP/${currentYear}/0001`;
+    }
+
+    const [, year, number] = match;
+    const voucherYear = parseInt(year);
+    const voucherNumber = parseInt(number);
+
+    // If it's a new year, start from 0001
+    if (currentYear > voucherYear) {
+      return `EXP/${currentYear}/0001`;
+    }
+
+    // Otherwise, increment the number
+    const nextNumber = (voucherNumber + 1).toString().padStart(4, '0');
+    return `EXP/${currentYear}/${nextNumber}`;
+  };
 
   const categories = [
     'Compliance & Paperwork',
@@ -99,7 +151,11 @@ export default function ExpenseForm({ onExpenseAdded }) {
         payment_date: format(new Date(), 'yyyy-MM-dd'),
         gst_percentage: 0,
         tds_deducted: 0,
+        voucher_no: '',
       });
+
+      // Generate new voucher number for next entry
+      generateVoucherNumber();
 
       if (onExpenseAdded) onExpenseAdded();
     } catch (error) {
@@ -141,12 +197,22 @@ export default function ExpenseForm({ onExpenseAdded }) {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Voucher No. *
               </label>
-              <input
-                type="text"
-                placeholder="EXP/2025/001"
-                {...register('voucher_no', { required: 'Voucher number is required' })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
+              <div className="flex items-stretch">
+                <input
+                  type="text"
+                  placeholder="EXP/2025/0001"
+                  {...register('voucher_no', { required: 'Voucher number is required' })}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-l-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-w-0"
+                />
+                <button
+                  type="button"
+                  onClick={generateVoucherNumber}
+                  className="px-3 py-2 text-sm bg-gray-100 text-gray-700 border border-gray-300 border-l-0 rounded-r-md hover:bg-gray-200 transition-colors flex-shrink-0"
+                  title="Generate next voucher number"
+                >
+                  Auto
+                </button>
+              </div>
               {errors.voucher_no && (
                 <p className="text-red-500 text-sm mt-1">{errors.voucher_no.message}</p>
               )}
