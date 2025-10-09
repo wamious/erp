@@ -56,7 +56,8 @@ export async function PUT(request, { params }) {
 // Delete expense (admin only)
 export async function DELETE(request, { params }) {
     try {
-        const expenseId = params.id;
+        const { id: userId } = await params;
+        const expenseId = userId;
 
         // Delete the expense
         const { data, error } = await supabase
