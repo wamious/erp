@@ -304,33 +304,39 @@ export default function ExpenseList() {
 
     try {
       // Delete associated files from storage first
-      if (deleteExpense.attachments && deleteExpense.attachments.length > 0) {
-        const filePaths = deleteExpense.attachments.map(file => file.path);
-        const { error: storageError } = await supabase.storage
-          .from('erp-expense-documents')
-          .remove(filePaths);
+      // if (deleteExpense.attachments && deleteExpense.attachments.length > 0) {
+      //   const filePaths = deleteExpense.attachments.map(file => file.path);
+      //   const { error: storageError } = await supabase.storage
+      //     .from('erp-expense-documents')
+      //     .remove(filePaths);
 
-        if (storageError) {
-          console.error('Error deleting files from storage:', storageError);
-          // Continue with expense deletion even if file deletion fails
-        }
-      }
+      //   if (storageError) {
+      //     console.error('Error deleting files from storage:', storageError);
+      //     // Continue with expense deletion even if file deletion fails
+      //   }
+      // }
 
       // Find the expense to get its attachments
-      const expenseToDelete = expenses.find(exp => exp.id === expenseId);
+      // try {
+      //   const expenseToDelete = expenses.find(exp => exp.id === id);
+      // }
+      // catch (error) {
+      //   console.log(error);
+      // }
+
 
       // Delete associated files from storage first
-      if (expenseToDelete?.attachments && expenseToDelete.attachments.length > 0) {
-        const filePaths = expenseToDelete.attachments.map(file => file.path);
-        const { error: storageError } = await supabase.storage
-          .from('expense-documents')
-          .remove(filePaths);
+      // if (expenseToDelete?.attachments && expenseToDelete.attachments.length > 0) {
+      //   const filePaths = expenseToDelete.attachments.map(file => file.path);
+      //   const { error: storageError } = await supabase.storage
+      //     .from('erp-expense-documents')
+      //     .remove(filePaths);
 
-        if (storageError) {
-          console.error('Error deleting files from storage:', storageError);
-          // Continue with expense deletion even if file deletion fails
-        }
-      }
+      //   if (storageError) {
+      //     console.error('Error deleting files from storage:', storageError);
+      //     // Continue with expense deletion even if file deletion fails
+      //   }
+      // }
 
       const response = await fetch(`/api/expenses/${deleteExpense.id}`, {
         method: 'DELETE',
