@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { format } from 'date-fns';
 import { Save, Calculator, Upload, X, FileText } from 'lucide-react';
@@ -39,25 +39,14 @@ export default function ExpenseForm({ onExpenseAdded }) {
   const totalAmount = parseFloat(invoiceAmount) + gstAmount;
   const netPayment = totalAmount - parseFloat(tdsDeducted);
 
-
-  // Update calculated fields
-  // useState(() => {
-  //   setValue('gst_amount', gstAmount.toFixed(2));
-  //   setValue('net_payment', netPayment.toFixed(2));
-  // }, [invoiceAmount, gstPercentage, tdsDeducted]);
-
   // ✅ FIX: useEffect so fields update when inputs change
   useEffect(() => {
     setValue('gst_amount', gstAmount.toFixed(2));
     setValue('net_payment', netPayment.toFixed(2));
   }, [invoiceAmount, gstPercentage, tdsDeducted, setValue, gstAmount, netPayment]);
 
-  // Auto-generate voucher number on component mount
-  useEffect(() => {
-    generateVoucherNumber();
-  }, []);
 
-  const generateVoucherNumber = async () => {
+  const generateVoucherNumber = useCallback(async () => {
     try {
       const response = await fetch('/api/expenses?action=latest-voucher');
       if (response.ok) {
@@ -67,11 +56,15 @@ export default function ExpenseForm({ onExpenseAdded }) {
       }
     } catch (error) {
       console.error('Error generating voucher number:', error);
-      // Fallback to default format
       const currentYear = new Date().getFullYear();
       setValue('voucher_no', `EXP/${currentYear}/0001`);
     }
-  };
+  }, [setValue]);
+
+  useEffect(() => {
+    generateVoucherNumber();
+  }, [generateVoucherNumber]);
+
 
   const generateNextVoucherNumber = (latestVoucher) => {
     const currentYear = new Date().getFullYear();
