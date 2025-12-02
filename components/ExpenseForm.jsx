@@ -97,6 +97,7 @@ export default function ExpenseForm({ onExpenseAdded }) {
   const categories = [
     'Compliance & Paperwork',
     'Professional Services',
+    'Employee',
     'Office Supplies',
     'Technology',
     'Marketing',
